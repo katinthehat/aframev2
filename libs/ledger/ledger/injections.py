@@ -2,6 +2,7 @@ from concurrent.futures import Executor, as_completed
 from dataclasses import dataclass, make_dataclass
 from typing import Dict, List, Optional
 
+import pandas as pd
 import h5py
 import numpy as np
 from astropy.cosmology import z_at_value
@@ -356,19 +357,40 @@ class _WaveformGenerator:
         return waveforms
 
     def __call__(self, params: Dict[str, float]):
+        #print("Parameters:", params)
+
+        freq_limit = 1899. / (params["mass1"] + params["mass2"])
+        if self.minimum_frequency < freq_limit:
+            minimum_frequency = freq_limit
+            reference_frequency = freq_limit
+        else:
+            minimum_frequency = self.minimum_frequency
+            reference_frequency = self.reference_frequency
+
         hp, hc = get_td_waveform(
             approximant=self.waveform_approximant,
-            f_lower=self.minimum_frequency,
-            f_ref=self.reference_frequency,
+            f_lower=minimum_frequency,
+            f_ref=reference_frequency,
             delta_t=1 / self.sample_rate,
             **params,
         )
 
-        t_final = hp.sample_times.data[-1]
-        stacked = np.stack([hp.data, hc.data])
-        stacked = self.align_waveforms(stacked, t_final)
+        try:
+            hp, hc = get_td_waveform(
+                approximant=self.waveform_approximant,
+                f_lower=self.minimum_frequency,
+                f_ref=self.reference_frequency,
+                delta_t=1 / self.sample_rate,
+                **params,
+            )
 
-        unstacked = {k: v for (k, v) in zip(["plus", "cross"], stacked)}
+            t_final = hp.sample_times.data[-1]
+            stacked = np.stack([hp.data, hc.data])
+            stacked = self.align_waveforms(stacked, t_final)
+
+            unstacked = {k: v for (k, v) in zip(["plus", "cross"], stacked)}
+        except:
+                print("Parameters:", params)
 
         return unstacked
 
